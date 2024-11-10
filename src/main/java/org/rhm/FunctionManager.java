@@ -13,13 +13,22 @@ public class FunctionManager {
 
     public FunctionManager() {
         functionHandlers.put("println", args -> {
-            if (args.length != 1) {
-                logger.error("Invalid number of arguments for 'println'. Expected 1 but got {}", args.length);
-                throw new IllegalArgumentException("println requires exactly one argument.");
+            if (args.length < 1) {
+                logger.error("Invalid number of arguments for 'println'. Expected at least 1 but got {}", args.length);
+                throw new IllegalArgumentException("println requires at least one argument.");
             }
-            Object value = args[0].getAs(Object.class);
-            logger.debug("Executing 'println' with argument: {}", value); // Changed to debug
-            System.out.println(value);
+
+            String formatString = args[0].getAs(String.class);
+
+            Object[] formatArgs = new Object[args.length - 1];
+            for (int i = 1; i < args.length; i++) {
+                formatArgs[i - 1] = args[i].getAs(Object.class);
+            }
+
+            logger.debug("Executing 'println' with format string: {} and arguments: {}", formatString, formatArgs);
+
+            System.out.println(String.format(formatString.replaceAll("\\{}","%s"), formatArgs));
+
             return null;
         });
 

@@ -29,7 +29,7 @@ public class Interpreter {
             if (result instanceof Parser.Assignment assignment) {
                 String variableName = assignment.variableName();
                 Object value = assignment.value();
-                variables.put(variableName, value);
+                setVariableValue(variableName, value);
                 logger.debug("Assigned value {} to variable {}", value, variableName);
             }
         }
@@ -43,5 +43,9 @@ public class Interpreter {
         }
         logger.debug("Retrieved value {} for variable {}", value, name);
         return value;
+    }
+
+    public void setVariableValue(String name, Object value) {
+        variables.put(name, value);
     }
 }

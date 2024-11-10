@@ -43,6 +43,16 @@ public class OperationManager {
             }
         });
 
+        operatorHandlers.put("//", (leftOperand, rightOperand) -> {
+            logger.debug("Handling operator '//' with operands: {} and {}", leftOperand, rightOperand);
+            if (leftOperand instanceof Integer && rightOperand instanceof Integer) {
+                return (Integer) leftOperand / (Integer) rightOperand;
+            } else {
+                float left = toFloat(leftOperand);
+                float right = toFloat(rightOperand);
+                return Math.round(left) / Math.round(right);
+            }
+        });
         operatorHandlers.put("/", (leftOperand, rightOperand) -> {
             logger.debug("Handling operator '/' with operands: {} and {}", leftOperand, rightOperand);
             if (leftOperand instanceof Integer && rightOperand instanceof Integer) {

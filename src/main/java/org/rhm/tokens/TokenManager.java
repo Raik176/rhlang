@@ -141,79 +141,6 @@ public class TokenManager {
         }
     }
 
-    public static class IntegerTokenHandler implements TokenHandler {
-        @Override
-        public Lexer.Token<Integer> parse(String source, AtomicInteger index) {
-            StringBuilder number = new StringBuilder();
-
-            if (index.get() < source.length() && source.charAt(index.get()) == '-') {
-                number.append('-');
-                index.getAndIncrement();
-            }
-
-            number.append(getString(source, index, (s, idx) -> Character.isDigit(s.charAt(index.get()))));
-
-            if (number.isEmpty() || (number.length() == 1 && number.charAt(0) == '-')) {
-                throw new NumberFormatException("Invalid integer format: '" + number + "'");
-            }
-
-            return new Lexer.Token<>(Lexer.TokenType.INTEGER, Integer.parseInt(number.toString()));
-        }
-
-        @Override
-        public boolean canHandle(String source, AtomicInteger index) {
-            int startIndex = index.get();
-
-            if (source.charAt(startIndex) == '-') {
-                startIndex++;
-            }
-
-            return startIndex < source.length() && Character.isDigit(source.charAt(startIndex));
-        }
-    }
-
-
-    public static class FloatTokenHandler implements TokenHandler {
-        @Override
-        public Lexer.Token<Float> parse(String source, AtomicInteger index) {
-            StringBuilder number = new StringBuilder();
-
-            if (index.get() < source.length() && source.charAt(index.get()) == '-') {
-                number.append('-');
-                index.getAndIncrement();
-            }
-
-            number.append(getString(source, index, (s, idx) -> Character.isDigit(s.charAt(index.get()))));
-
-            if (index.get() < source.length() && source.charAt(index.get()) == '.') {
-                number.append('.');
-                index.getAndIncrement();
-
-                number.append(getString(source, index, (s, idx) -> Character.isDigit(s.charAt(index.get()))));
-            }
-
-            if (index.get() < source.length() && source.charAt(index.get()) == 'f') {
-                index.getAndIncrement();
-            }
-
-            try {
-                return new Lexer.Token<>(Lexer.TokenType.FLOAT, Float.parseFloat(number.toString()));
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("Invalid float format: '" + number + "'");
-            }
-        }
-
-        @Override
-        public boolean canHandle(String source, AtomicInteger index) {
-            int startIndex = index.get();
-            if (source.charAt(startIndex) == '-') {
-                startIndex++;
-            }
-
-            return startIndex < source.length() && Character.isDigit(source.charAt(startIndex));
-        }
-    }
-
     public static class OperatorTokenHandler implements TokenHandler {
         public Lexer.Token<String> parse(String source, AtomicInteger index) {
             return new Lexer.Token<>(Lexer.TokenType.OPERATOR, getString(source, index, this::canHandle));
@@ -242,7 +169,7 @@ public class TokenManager {
         @Override
         public Lexer.Token<String> parse(String source, AtomicInteger index) {
             index.getAndIncrement();
-            String stringValue = getString(source, index, (s, idx) -> s.charAt(idx.get()) != '=');
+            String stringValue = getString(source, index, (s, idx) -> s.charAt(idx.get()) != '"');
             index.getAndIncrement();
             return new Lexer.Token<>(Lexer.TokenType.STRING, stringValue);
         }

@@ -10,7 +10,7 @@ import java.util.*;
 public class Parser {
     private static final Logger logger = LoggerFactory.getLogger(Parser.class);
 
-    private final List<Lexer.Token<?>> tokens;
+    private List<Lexer.Token<?>> tokens;
     public Interpreter interpreter;
     private int index = 0;
 
@@ -18,6 +18,11 @@ public class Parser {
         this.tokens = tokens;
 
         logger.info("Parser initialized with {} tokens.", tokens.size());
+    }
+
+    public void setTokens(List<Lexer.Token<?>> newTokens) {
+        this.index = 0;
+        this.tokens = newTokens;
     }
 
     public boolean hasMoreTokens() {
