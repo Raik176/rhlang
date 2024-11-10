@@ -1,11 +1,16 @@
-package org.rhm;
+package org.rhm.tokens;
 
-import java.util.LinkedHashMap;
-import java.util.Set;
+import org.rhm.Interpreter;
+import org.rhm.Lexer;
+
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
 
 public class TokenManager {
-    public final LinkedHashMap<Lexer.TokenType, TokenHandler> tokenHandlers = new LinkedHashMap<>();
+    public final EnumMap<Lexer.TokenType, TokenHandler> tokenHandlers = new EnumMap<>(Lexer.TokenType.class);
+
 
     public TokenManager() {
         tokenHandlers.put(Lexer.TokenType.FLOAT, new FloatTokenHandler());
@@ -18,51 +23,21 @@ public class TokenManager {
         tokenHandlers.put(Lexer.TokenType.COMMA, new SingleTokenHandler(',', Lexer.TokenType.COMMA));
         tokenHandlers.put(Lexer.TokenType.SEMICOLON, new SingleTokenHandler(';', Lexer.TokenType.SEMICOLON));
         tokenHandlers.put(Lexer.TokenType.COMMENT, new CommentTokenHandler());
-        tokenHandlers.put(Lexer.TokenType.KEYWORD, new TokenHandler() {
-            private static final Set<String> KEYWORDS = Set.of("if", "else", "for", "while");
-
-            @Override
-            public Lexer.Token<String> parse(String source, AtomicInteger index) {
-                StringBuilder keyword = new StringBuilder();
-
-                while (index.get() < source.length() &&
-                        (Character.isLetterOrDigit(source.charAt(index.get())) || source.charAt(index.get()) == '_')) {
-                    keyword.append(source.charAt(index.get()));
-                    index.getAndIncrement();
-                }
-
-                String keywordString = keyword.toString();
-
-                if (KEYWORDS.contains(keywordString)) {
-                    return new Lexer.Token<>(Lexer.TokenType.KEYWORD, keywordString);
-                } else {
-                    return null;
-                }
-            }
-
-            @Override
-            public boolean canHandle(String source, AtomicInteger index) {
-                if (Character.isLetter(source.charAt(index.get())) || source.charAt(index.get()) == '_') {
-                    StringBuilder keyword = new StringBuilder();
-                    int startIndex = index.get();
-
-                    while (index.get() < source.length() &&
-                            (Character.isLetterOrDigit(source.charAt(index.get())) || source.charAt(index.get()) == '_')) {
-                        keyword.append(source.charAt(index.get()));
-                        index.getAndIncrement();
-                    }
-
-                    return KEYWORDS.contains(keyword.toString());
-                }
-
-                return false;
-            }
-        });
+        tokenHandlers.put(Lexer.TokenType.KEYWORD, new KeywordTokenHandler());
     }
 
     public interface TokenHandler {
         Lexer.Token<?> parse(String source, AtomicInteger index);
         boolean canHandle(String source, AtomicInteger index);
+
+        default String getString(String source, AtomicInteger index, BiFunction<String, AtomicInteger, Boolean> condition) {
+            StringBuilder string = new StringBuilder();
+            while (index.get() < source.length() && condition.apply(source, index)) {
+                string.append(source.charAt(index.get()));
+                index.getAndIncrement();
+            }
+            return string.toString();
+        }
     }
     public static class SingleTokenHandler implements TokenHandler {
         final char token;
@@ -85,6 +60,28 @@ public class TokenManager {
             return source.charAt(index.get()) == token;
         }
     }
+
+    public static class KeywordTokenHandler implements TokenHandler {
+        @Override
+        public Lexer.Token<String> parse(String source, AtomicInteger index) {
+            String keyword = getString(source, index, this::canHandle);
+            return new Lexer.Token<>(Lexer.TokenType.KEYWORD, keyword);
+        }
+
+        @Override
+        public boolean canHandle(String source, AtomicInteger index) {
+            for (String keyword : Interpreter.keywordManager.keywordHandlers.keySet()) {
+                if (index.get() + keyword.length() <= source.length()) {
+                    String subSequence = source.substring(index.get(), index.get() + keyword.length());
+                    if (subSequence.equals(keyword)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
 
     public static class BooleanTokenHandler implements TokenHandler {
         @Override
@@ -154,10 +151,7 @@ public class TokenManager {
                 index.getAndIncrement();
             }
 
-            while (index.get() < source.length() && Character.isDigit(source.charAt(index.get()))) {
-                number.append(source.charAt(index.get()));
-                index.getAndIncrement();
-            }
+            number.append(getString(source, index, (s, idx) -> Character.isDigit(s.charAt(index.get()))));
 
             if (number.isEmpty() || (number.length() == 1 && number.charAt(0) == '-')) {
                 throw new NumberFormatException("Invalid integer format: '" + number + "'");
@@ -189,19 +183,13 @@ public class TokenManager {
                 index.getAndIncrement();
             }
 
-            while (index.get() < source.length() && Character.isDigit(source.charAt(index.get()))) {
-                number.append(source.charAt(index.get()));
-                index.getAndIncrement();
-            }
+            number.append(getString(source, index, (s, idx) -> Character.isDigit(s.charAt(index.get()))));
 
             if (index.get() < source.length() && source.charAt(index.get()) == '.') {
                 number.append('.');
                 index.getAndIncrement();
 
-                while (index.get() < source.length() && Character.isDigit(source.charAt(index.get()))) {
-                    number.append(source.charAt(index.get()));
-                    index.getAndIncrement();
-                }
+                number.append(getString(source, index, (s, idx) -> Character.isDigit(s.charAt(index.get()))));
             }
 
             if (index.get() < source.length() && source.charAt(index.get()) == 'f') {
@@ -228,18 +216,7 @@ public class TokenManager {
 
     public static class OperatorTokenHandler implements TokenHandler {
         public Lexer.Token<String> parse(String source, AtomicInteger index) {
-            StringBuilder operator = new StringBuilder();
-            char currentChar = source.charAt(index.get());
-
-            while (index.get() < source.length() && canHandle(source, index)) {
-                operator.append(currentChar);
-                index.getAndIncrement();
-                if (index.get() < source.length()) {
-                    currentChar = source.charAt(index.get());
-                }
-            }
-
-            return new Lexer.Token<>(Lexer.TokenType.OPERATOR, operator.toString());
+            return new Lexer.Token<>(Lexer.TokenType.OPERATOR, getString(source, index, this::canHandle));
         }
 
         @Override
@@ -261,32 +238,13 @@ public class TokenManager {
         }
     }
 
-    public static class ParenthesisTokenHandler implements TokenHandler {
-        @Override
-        public Lexer.Token<Character> parse(String source, AtomicInteger index) {
-            char currentChar = source.charAt(index.get());
-            index.getAndIncrement();
-            return new Lexer.Token<>(Lexer.TokenType.PARENTHESIS, currentChar);
-        }
-
-        @Override
-        public boolean canHandle(String source, AtomicInteger index) {
-            char currentChar = source.charAt(index.get());
-            return currentChar == '(' || currentChar == ')';
-        }
-    }
-
     public static class StringTokenHandler implements TokenHandler {
         @Override
         public Lexer.Token<String> parse(String source, AtomicInteger index) {
             index.getAndIncrement();
-            StringBuilder stringValue = new StringBuilder();
-            while (index.get() < source.length() && source.charAt(index.get()) != '"') {
-                stringValue.append(source.charAt(index.get()));
-                index.getAndIncrement();
-            }
+            String stringValue = getString(source, index, (s, idx) -> s.charAt(idx.get()) != '=');
             index.getAndIncrement();
-            return new Lexer.Token<>(Lexer.TokenType.STRING, stringValue.toString());
+            return new Lexer.Token<>(Lexer.TokenType.STRING, stringValue);
         }
 
         @Override
@@ -298,12 +256,9 @@ public class TokenManager {
     public static class IdentifierTokenHandler implements TokenHandler {
         @Override
         public Lexer.Token<String> parse(String source, AtomicInteger index) {
-            StringBuilder identifier = new StringBuilder();
-            while (index.get() < source.length() && (Character.isLetterOrDigit(source.charAt(index.get())) || source.charAt(index.get()) == '_')) {
-                identifier.append(source.charAt(index.get()));
-                index.getAndIncrement();
-            }
-            return new Lexer.Token<>(Lexer.TokenType.IDENTIFIER, identifier.toString());
+            String identifier = getString(source, index, (s, idx) ->
+                    (Character.isLetterOrDigit(source.charAt(index.get())) || source.charAt(index.get()) == '_'));
+            return new Lexer.Token<>(Lexer.TokenType.IDENTIFIER, identifier);
         }
 
         @Override

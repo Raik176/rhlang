@@ -1,5 +1,7 @@
 package org.rhm;
 
+import org.rhm.tokens.ParenthesisTokenHandler;
+import org.rhm.tokens.TokenManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,11 +84,11 @@ public class Parser {
             }
 
             return interpreter.getVariableValue(identifier);
-        } else if (getCurrentToken().type == Lexer.TokenType.PARENTHESIS && getCurrentToken().getAs(String.class).equals("(")) {
+        } else if (ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.ROUND_LEFT)) {
             logger.debug("Parsing grouped expression.");
             advance();
             Object result = parseExpression();
-            if (getCurrentToken().type == Lexer.TokenType.PARENTHESIS && getCurrentToken().getAs(String.class).equals(")")) {
+            if (ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.ROUND_RIGHT)) {
                 advance();
             } else {
                 logger.error("Expected closing parenthesis at index {}", index);
@@ -96,20 +98,19 @@ public class Parser {
         } else if (getCurrentToken().type == Lexer.TokenType.EOF) {
             System.exit(0);
             return null;
-        } else {
-            Object value = getCurrentToken().getAs(Object.class);
-            advance();
-            return value;
         }
+        Object value = getCurrentToken().getAs(Object.class);
+        advance();
+        return value;
     }
 
 
     private SafeObject[] parseFunctionArguments() {
         logger.debug("Parsing function arguments.");
-        advance();
+        advance();  // Advance to the first token after '('
         List<SafeObject> args = new ArrayList<>();
 
-        while (hasMoreTokens() && getCurrentToken().type != Lexer.TokenType.PARENTHESIS) {
+        while (getCurrentToken().type != Lexer.TokenType.PARENTHESIS) {
             if (getCurrentToken().type == Lexer.TokenType.COMMA) {
                 advance();
                 continue;
@@ -118,7 +119,7 @@ public class Parser {
             args.add(new SafeObject(parseExpression()));
         }
 
-        if (getCurrentToken().type == Lexer.TokenType.PARENTHESIS) {
+        if (ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.ROUND_RIGHT)) {
             advance();
         } else {
             logger.error("Expected closing parenthesis for function arguments.");
@@ -128,6 +129,5 @@ public class Parser {
         return args.toArray(new SafeObject[0]);
     }
 
-    public record Assignment(String variableName, Object value) {
-    }
+    public record Assignment(String variableName, Object value) { }
 }

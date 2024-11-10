@@ -1,10 +1,10 @@
 package org.rhm;
 
+import org.rhm.tokens.TokenManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Lexer {
@@ -12,17 +12,17 @@ public class Lexer {
     public static final Token<?> EOF_TOKEN = new Token<>(TokenType.EOF, null);
 
     public enum TokenType {
-        KEYWORD,
-        COMMENT,
-        COMMA,
-        IDENTIFIER,
         INTEGER,
-        BOOLEAN,
         FLOAT,
         OPERATOR,
-        STRING,
         PARENTHESIS,
+        STRING,
+        BOOLEAN,
+        KEYWORD,
+        IDENTIFIER,
+        COMMA,
         SEMICOLON,
+        COMMENT,
         EOF
     }
 
@@ -37,10 +37,7 @@ public class Lexer {
 
         @Override
         public String toString() {
-            return "Token{" +
-                    "type=" + type +
-                    ", value=" + value + (value.isNull() ? "" : (" [" + value.getValueClass().getSimpleName() + "]")) +
-                    '}';
+            return "Token{" + "type=" + type + ", value=" + value + (value.isNull() ? "" : " [" + value.getValueClass().getSimpleName() + "]") + '}';
         }
 
         public <S> S getAs(Class<S> clazz) {
@@ -57,23 +54,15 @@ public class Lexer {
             char currentChar = source.charAt(i.get());
 
             if (Character.isWhitespace(currentChar)) {
-                i.set(i.get() + 1);
+                i.incrementAndGet();
                 continue;
             }
 
-            boolean tokenHandled = false;
-
-            for (TokenManager.TokenHandler handler : Interpreter.tokenManager.tokenHandlers.values()) {
-                if (handler.canHandle(source, i)) {
-                    Token<?> token = handler.parse(source, i);
-                    tokens.add(token);
-                    tokenHandled = true;
-                    logger.debug("Parsed token: {}", token);
-                    break;
-                }
-            }
-
-            if (!tokenHandled) {
+            Token<?> token = handleToken(source, i);
+            if (token != null) {
+                tokens.add(token);
+                logger.debug("Parsed token: {}", token);
+            } else {
                 logger.error("Invalid character at index {}: {}", i.get(), currentChar);
                 throw new IllegalArgumentException("Invalid character at index " + i.get() + ": " + currentChar);
             }
@@ -81,5 +70,14 @@ public class Lexer {
 
         tokens.add(EOF_TOKEN);
         return tokens;
+    }
+
+    private Token<?> handleToken(String source, AtomicInteger index) {
+        for (TokenManager.TokenHandler handler : Interpreter.tokenManager.tokenHandlers.values()) {
+            if (handler.canHandle(source, index)) {
+                return handler.parse(source, index);
+            }
+        }
+        return null;
     }
 }
