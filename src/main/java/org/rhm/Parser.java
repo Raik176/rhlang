@@ -1,187 +1,133 @@
 package org.rhm;
 
-import org.rhm.Interpreter;
-import org.rhm.Lexer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.List;
+import java.util.*;
 
 public class Parser {
+    private static final Logger logger = LoggerFactory.getLogger(Parser.class);
+
+    private final List<Lexer.Token<?>> tokens;
     public Interpreter interpreter;
-    private List<Lexer.Token> tokens;
     private int index = 0;
 
-    public Parser(List<Lexer.Token> tokens) {
+    public Parser(List<Lexer.Token<?>> tokens) {
         this.tokens = tokens;
+
+        logger.info("Parser initialized with {} tokens.", tokens.size());
     }
 
     public boolean hasMoreTokens() {
         return index < tokens.size();
     }
 
-    public Lexer.Token getCurrentToken() {
+    public Lexer.Token<?> getCurrentToken() {
         if (hasMoreTokens()) {
             return tokens.get(index);
         }
-        return null;
+        return Lexer.EOF_TOKEN;
+    }
+    public Lexer.Token<?> getNextToken() {
+        if (index + 1 < tokens.size()) {
+            return tokens.get(index + 1);
+        }
+        return Lexer.EOF_TOKEN;
     }
 
     public void advance() {
         if (hasMoreTokens()) {
             index++;
+            logger.debug("advance: New index is {}", index);
         }
     }
 
     public Object parseExpression() {
-        return parseAddSubtract(); // Start parsing with the lowest precedence (addition and subtraction)
-    }
+        logger.debug("Parsing expression starting at token index {}", index);
+        Object leftOperand = parsePrimary();
 
-    private Object parseAddSubtract() {
-        Object result = parseMultiplyDivide(); // Handle multiplication and division first
-
-        while (hasMoreTokens() && (getCurrentToken().value.equals("+") || getCurrentToken().value.equals("-"))) {
-            String operator = getCurrentToken().value;
-            advance();
-            Object rightOperand = parseMultiplyDivide(); // Evaluate the next term
-
-            if (operator.equals("+")) {
-                result = add(result, rightOperand);
-            } else if (operator.equals("-")) {
-                result = subtract(result, rightOperand);
-            }
-        }
-
-        return result;
-    }
-
-    public Object parseMultiplyDivide() {
-        Object result = parsePower(); // Handle exponentiation first
-
-        while (hasMoreTokens() && (getCurrentToken().value.equals("*") || getCurrentToken().value.equals("/") || getCurrentToken().value.equals("%"))) {
-            String operator = getCurrentToken().value;
-            advance();
-            Object rightOperand = parsePower(); // Evaluate the next term
-
-            if (operator.equals("*")) {
-                result = multiply(result, rightOperand);
-            } else if (operator.equals("/")) {
-                result = divide(result, rightOperand);
-            } else if (operator.equals("%")) {
-                result = modulus(result, rightOperand);
-            }
-        }
-
-        return result;
-    }
-
-    private Object parsePower() {
-        Object result = parsePrimary(); // Handle primary expressions (numbers, variables, parentheses)
-
-        while (hasMoreTokens() && getCurrentToken().value.equals("^")) {
-            advance();
-            Object rightOperand = parsePrimary(); // Evaluate the exponentiation part
-            result = Math.pow(toFloat(result), toFloat(rightOperand)); // Use Math.pow for exponentiation
-        }
-
-        return result;
-    }
-
-    private Object parsePrimary() {
-        if (getCurrentToken().type == Lexer.TokenType.STRING) {
-            String value = getCurrentToken().value;
-            advance();
-            return value;
-        } else if (getCurrentToken().type == Lexer.TokenType.INTEGER) {
-            int value = Integer.parseInt(getCurrentToken().value);
-            advance();
-            return value;
-        } else if (getCurrentToken().type == Lexer.TokenType.FLOAT) {
-            float value = Float.parseFloat(getCurrentToken().value);
-            advance();
-            return value;
-        } else if (getCurrentToken().type == Lexer.TokenType.IDENTIFIER) {
-            String identifier = getCurrentToken().value;
-            advance();
-
-            // Check for function calls
-            if (getCurrentToken().type == Lexer.TokenType.PARENTHESIS && getCurrentToken().value.equals("(")) {
-                advance();
-                if (identifier.equals("println")) {
-                    Object value = parseExpression(); // Evaluate the expression inside the parentheses
-                    if (getCurrentToken().type == Lexer.TokenType.PARENTHESIS && getCurrentToken().value.equals(")")) {
-                        advance();
-                        System.out.println(value);
-                        return null;
-                    } else {
-                        throw new IllegalArgumentException("Expected closing parenthesis for function call.");
-                    }
+        for (Map.Entry<String, OperationManager.OperatorHandler> entry : Interpreter.operationManager.operatorHandlers.entrySet()) {
+            while (hasMoreTokens() && getCurrentToken().type != Lexer.TokenType.EOF) {
+                Object operator = getCurrentToken().getAs(Object.class);
+                if (operator.equals(entry.getKey())) {
+                    logger.debug("Found operator: {}. Parsing with handler.", operator);
+                    advance();
+                    leftOperand = entry.getValue().parse(leftOperand, parsePrimary());
                 } else {
-                    throw new IllegalArgumentException("Unknown function: " + identifier);
+                    break;
                 }
             }
+        }
 
-            // If not a function call, treat it as a variable
+        logger.debug("Finished parsing expression, result: {}", leftOperand);
+        return leftOperand;
+    }
+
+
+    public Object parsePrimary() {
+        logger.debug("Parsing primary expression at index {}", index);
+        if (getCurrentToken().type == Lexer.TokenType.IDENTIFIER) {
+            String identifier = getCurrentToken().getAs(String.class);
+            advance();
+
+            if (getCurrentToken().type == Lexer.TokenType.OPERATOR && getCurrentToken().getAs(String.class).equals("=")) {
+                logger.debug("Assignment found for identifier: {}", identifier);
+                advance();
+                Object value = parseExpression();
+                return new Assignment(identifier, value);
+            }
+            if (Interpreter.functionManager.functionHandlers.containsKey(identifier) && getCurrentToken().type == Lexer.TokenType.PARENTHESIS) {
+                logger.debug("Function call found for identifier: {}", identifier);
+                return Interpreter.functionManager.functionHandlers.get(identifier).execute(parseFunctionArguments());
+            }
+
             return interpreter.getVariableValue(identifier);
-        } else if (getCurrentToken().type == Lexer.TokenType.PARENTHESIS && getCurrentToken().value.equals("(")) {
-            advance(); // Skip '('
-            Object result = parseExpression(); // Recursively parse the inner expression
-            if (getCurrentToken().type == Lexer.TokenType.PARENTHESIS && getCurrentToken().value.equals(")")) {
-                advance(); // Skip ')'
+        } else if (getCurrentToken().type == Lexer.TokenType.PARENTHESIS && getCurrentToken().getAs(String.class).equals("(")) {
+            logger.debug("Parsing grouped expression.");
+            advance();
+            Object result = parseExpression();
+            if (getCurrentToken().type == Lexer.TokenType.PARENTHESIS && getCurrentToken().getAs(String.class).equals(")")) {
+                advance();
             } else {
-                throw new IllegalArgumentException("Expected closing parenthesis.");
+                logger.error("Expected closing parenthesis at index {}", index);
+                throw new IllegalArgumentException("Expected closing parenthesis on index " + index + ".");
             }
             return result;
         } else if (getCurrentToken().type == Lexer.TokenType.EOF) {
             System.exit(0);
             return null;
         } else {
-            throw new IllegalArgumentException("Unexpected token: " + getCurrentToken().value);
+            Object value = getCurrentToken().getAs(Object.class);
+            advance();
+            return value;
         }
     }
 
-    // Helper methods to handle float and int operations together
-    private Object add(Object left, Object right) {
-        float leftVal = toFloat(left);
-        float rightVal = toFloat(right);
-        return leftVal + rightVal;
-    }
 
-    private Object subtract(Object left, Object right) {
-        float leftVal = toFloat(left);
-        float rightVal = toFloat(right);
-        return leftVal - rightVal;
-    }
+    private SafeObject[] parseFunctionArguments() {
+        logger.debug("Parsing function arguments.");
+        advance();
+        List<SafeObject> args = new ArrayList<>();
 
-    private Object multiply(Object left, Object right) {
-        float leftVal = toFloat(left);
-        float rightVal = toFloat(right);
-        return leftVal * rightVal;
-    }
+        while (hasMoreTokens() && getCurrentToken().type != Lexer.TokenType.PARENTHESIS) {
+            if (getCurrentToken().type == Lexer.TokenType.COMMA) {
+                advance();
+                continue;
+            }
 
-    private Object divide(Object left, Object right) {
-        float leftVal = toFloat(left);
-        float rightVal = toFloat(right);
-        if (rightVal == 0) {
-            throw new ArithmeticException("Division by zero.");
+            args.add(new SafeObject(parseExpression()));
         }
-        return leftVal / rightVal;
-    }
 
-    private Object modulus(Object left, Object right) {
-        float leftVal = toFloat(left);
-        float rightVal = toFloat(right);
-        return leftVal % rightVal;
-    }
-
-    // Convert Object to float (handles both int and float)
-    private float toFloat(Object value) {
-        if (value instanceof Integer) {
-            return (float) (int) value;
-        } else if (value instanceof Float) {
-            return (float) value;
+        if (getCurrentToken().type == Lexer.TokenType.PARENTHESIS) {
+            advance();
         } else {
-            throw new IllegalArgumentException("Invalid type for arithmetic operation: " + value);
+            logger.error("Expected closing parenthesis for function arguments.");
+            throw new IllegalArgumentException("Expected closing parenthesis.");
         }
+
+        return args.toArray(new SafeObject[0]);
     }
 
-    public record Assignment(String variableName, Object value) { }
+    public record Assignment(String variableName, Object value) {
+    }
 }

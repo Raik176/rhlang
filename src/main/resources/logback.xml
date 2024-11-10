@@ -1,0 +1,17 @@
+<configuration>
+    <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>
+                [%logger{0}] %level %msg%n
+            </pattern>
+        </encoder>
+    </appender>
+
+    <root level="debug">
+        <appender-ref ref="console" />
+    </root>
+
+    <logger name="org.rhm" level="debug" additivity="false">
+        <appender-ref ref="console" />
+    </logger>
+</configuration>

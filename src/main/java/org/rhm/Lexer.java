@@ -1,98 +1,85 @@
 package org.rhm;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Lexer {
-    public enum TokenType { KEYWORD, IDENTIFIER, INTEGER, FLOAT, OPERATOR, STRING, PARENTHESIS, EOF }
+    private static final Logger logger = LoggerFactory.getLogger(Lexer.class);
+    public static final Token<?> EOF_TOKEN = new Token<>(TokenType.EOF, null);
 
-    public static class Token {
+    public enum TokenType {
+        KEYWORD,
+        COMMENT,
+        COMMA,
+        IDENTIFIER,
+        INTEGER,
+        BOOLEAN,
+        FLOAT,
+        OPERATOR,
+        STRING,
+        PARENTHESIS,
+        SEMICOLON,
+        EOF
+    }
+
+    public static class Token<T> {
         public TokenType type;
-        public String value;
+        private final SafeObject value;
 
-        public Token(TokenType type, String value) {
+        public Token(TokenType type, T value) {
             this.type = type;
-            this.value = value;
+            this.value = new SafeObject(value);
         }
 
         @Override
         public String toString() {
             return "Token{" +
                     "type=" + type +
-                    ", value='" + value + '\'' +
+                    ", value=" + value + (value.isNull() ? "" : (" [" + value.getValueClass().getSimpleName() + "]")) +
                     '}';
+        }
+
+        public <S> S getAs(Class<S> clazz) {
+            return value.isNull() ? null : value.getAs(clazz);
         }
     }
 
-    public List<Token> tokenize(String source) {
-        List<Token> tokens = new ArrayList<>();
+    public List<Token<?>> tokenize(String source) {
+        List<Token<?>> tokens = new ArrayList<>();
         int length = source.length();
-        int i = 0;
+        AtomicInteger i = new AtomicInteger(0);
 
-        while (i < length) {
-            char currentChar = source.charAt(i);
+        while (i.get() < length) {
+            char currentChar = source.charAt(i.get());
 
             if (Character.isWhitespace(currentChar)) {
-                i++;
-            } else if (Character.isDigit(currentChar)) {
-                StringBuilder number = new StringBuilder();
-                while (i < length && Character.isDigit(source.charAt(i))) {
-                    number.append(source.charAt(i));
-                    i++;
-                }
+                i.set(i.get() + 1);
+                continue;
+            }
 
-                if (i < length && source.charAt(i) == '.') {
-                    number.append('.');
-                    i++;
+            boolean tokenHandled = false;
 
-                    while (i < length && Character.isDigit(source.charAt(i))) {
-                        number.append(source.charAt(i));
-                        i++;
-                    }
+            for (TokenManager.TokenHandler handler : Interpreter.tokenManager.tokenHandlers.values()) {
+                if (handler.canHandle(source, i)) {
+                    Token<?> token = handler.parse(source, i);
+                    tokens.add(token);
+                    tokenHandled = true;
+                    logger.debug("Parsed token: {}", token);
+                    break;
+                }
+            }
 
-                    if (i < length && source.charAt(i) == 'f') {
-                        i++;
-                        tokens.add(new Token(TokenType.FLOAT, number.toString()));
-                    } else {
-                        tokens.add(new Token(TokenType.FLOAT, number.toString()));
-                    }
-                } else if (i < length && source.charAt(i) == 'f') {
-                    i++;
-                    tokens.add(new Token(TokenType.FLOAT, number.toString()));
-                } else {
-                    tokens.add(new Token(TokenType.INTEGER, number.toString()));
-                }
-            } else if (currentChar == '+' || currentChar == '-' || currentChar == '*' || currentChar == '/' || currentChar == '^' || currentChar == '=') {
-                tokens.add(new Token(TokenType.OPERATOR, String.valueOf(currentChar)));
-                i++;
-            } else if (currentChar == '(' || currentChar == ')') {
-                tokens.add(new Token(TokenType.PARENTHESIS, String.valueOf(currentChar)));
-                i++;
-            } else if (currentChar == '"') {
-                i++;
-                StringBuilder stringValue = new StringBuilder();
-                while (i < length && source.charAt(i) != '"') {
-                    stringValue.append(source.charAt(i));
-                    i++;
-                }
-                if (i < length && source.charAt(i) == '"') {
-                    i++;
-                }
-                tokens.add(new Token(TokenType.STRING, stringValue.toString()));
-            } else if (Character.isLetter(currentChar) || currentChar == '_') {
-                StringBuilder identifier = new StringBuilder();
-                while (i < length && (Character.isLetterOrDigit(source.charAt(i)) || source.charAt(i) == '_')) {
-                    identifier.append(source.charAt(i));
-                    i++;
-                }
-                String identifierStr = identifier.toString();
-                tokens.add(new Token(TokenType.IDENTIFIER, identifierStr));
-            } else {
-                throw new IllegalArgumentException("Invalid character: " + currentChar);
+            if (!tokenHandled) {
+                logger.error("Invalid character at index {}: {}", i.get(), currentChar);
+                throw new IllegalArgumentException("Invalid character at index " + i.get() + ": " + currentChar);
             }
         }
 
-        tokens.add(new Token(TokenType.EOF, ""));
+        tokens.add(EOF_TOKEN);
         return tokens;
     }
 }

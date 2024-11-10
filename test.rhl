@@ -1,1 +1,38 @@
-println(5f*1.5+1)
+x = 10
+y = 20
+
+println(x)
+println(y)
+
+result = x + y
+println(result)
+
+result = x - y
+println(result)
+
+result = x * y
+println(result)
+
+result = y / x
+println(result)
+
+result = x ^ 2
+println(result)
+
+println(abs(-5))
+println(abs(3.2))
+
+maxVal = max(x, y)
+println(maxVal)
+
+minVal = min(x, y)
+println(minVal)
+
+println(sqrt(16))
+
+println(abs(5))
+println(abs(-5.5f))
+
+a = false
+b = true
+println(a == b)
