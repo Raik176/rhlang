@@ -1,10 +1,13 @@
 package org.rhm;
 
+import org.rhm.keywords.KeywordManager;
 import org.rhm.tokens.TokenManager;
+import org.rhm.util.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class Interpreter {
     private static final Logger logger = LoggerFactory.getLogger(Interpreter.class);
@@ -25,27 +28,27 @@ public class Interpreter {
 
     public void interpret() {
         while (parser.hasMoreTokens()) {
-            Object result = parser.parseExpression();
-            if (result instanceof Parser.Assignment assignment) {
-                String variableName = assignment.variableName();
-                Object value = assignment.value();
-                setVariableValue(variableName, value);
-                logger.debug("Assigned value {} to variable {}", value, variableName);
-            }
+            Utils.profile(parser::parseExpression, "parseExpression");
         }
     }
 
     public Object getVariableValue(String name) {
-        Object value = variables.get(name);
-        if (value == null) {
-            logger.error("Attempted to access an undefined variable: {}", name);
-            throw new IllegalArgumentException("Variable not defined: " + name);
-        }
-        logger.debug("Retrieved value {} for variable {}", value, name);
-        return value;
+        AtomicReference<Object> value = new AtomicReference<>();
+        Utils.profile(() -> {
+            value.set(variables.get(name));
+            if (value.get() == null) {
+                logger.error("Attempted to access an undefined variable: {}", name);
+                throw new IllegalArgumentException("Variable not defined: " + name);
+            }
+            logger.debug("Retrieved value {} for variable {}", value, name);
+        }, "getVariableValue");
+        return value.get();
     }
 
     public void setVariableValue(String name, Object value) {
-        variables.put(name, value);
+        Utils.profile(() -> {
+            variables.put(name, value);
+            logger.debug("Assigned value {} to variable {}", value, name);
+        }, "setVariableValue");
     }
 }

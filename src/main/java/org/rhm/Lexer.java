@@ -1,6 +1,5 @@
 package org.rhm;
 
-import org.rhm.tokens.TokenManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,15 +13,16 @@ public class Lexer {
     public enum TokenType {
         INTEGER,
         FLOAT,
-        OPERATOR,
-        PARENTHESIS,
         STRING,
+        COMMENT,
+        OPERATOR,
+        LIST,
+        PARENTHESIS,
         BOOLEAN,
         KEYWORD,
         IDENTIFIER,
         COMMA,
         SEMICOLON,
-        COMMENT,
         EOF
     }
 
@@ -58,7 +58,7 @@ public class Lexer {
                 continue;
             }
 
-            Token<?> token = handleToken(source, i);
+            Token<?> token = Interpreter.tokenManager.handleToken(source, i);
             if (token != null) {
                 tokens.add(token);
                 logger.debug("Parsed token: {}", token);
@@ -70,14 +70,5 @@ public class Lexer {
 
         tokens.add(EOF_TOKEN);
         return tokens;
-    }
-
-    private Token<?> handleToken(String source, AtomicInteger index) {
-        for (TokenManager.TokenHandler handler : Interpreter.tokenManager.tokenHandlers.values()) {
-            if (handler.canHandle(source, index)) {
-                return handler.parse(source, index);
-            }
-        }
-        return null;
     }
 }

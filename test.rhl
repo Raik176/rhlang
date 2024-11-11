@@ -1,1 +1,4 @@
-println(2+4*2)
+a = ["a","b","c","d"]
+for (elem in a) {
+  println(elem)
+}

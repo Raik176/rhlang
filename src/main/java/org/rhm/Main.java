@@ -1,11 +1,13 @@
 package org.rhm;
 
+import org.rhm.util.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 
@@ -19,7 +21,8 @@ public class Main {
 
             if (content != null) {
                 Lexer lexer = new Lexer();
-                List<Lexer.Token<?>> tokens = lexer.tokenize(content);
+                List<Lexer.Token<?>> tokens = new ArrayList<>();
+                Utils.profile(() -> tokens.addAll(lexer.tokenize(content)), "Lexing Process");
                 displayTokens(tokens);
 
                 Parser parser = new Parser(tokens);

@@ -4,13 +4,31 @@ import org.rhm.Interpreter;
 import org.rhm.Lexer;
 
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 
 public class TokenManager {
     public final EnumMap<Lexer.TokenType, TokenHandler> tokenHandlers = new EnumMap<>(Lexer.TokenType.class);
+    private static final Map<Object, Lexer.Token<?>> tokenCache = new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Object, Lexer.Token<?>> eldest) {
+            return size() > 100;
+        }
+    };
 
+    // pre-cache frequently used tokens
+    static {
+        for (String s : Interpreter.operationManager.operatorHandlers.keySet()) {
+            tokenCache.put(s, new Lexer.Token<>(Lexer.TokenType.OPERATOR, s));
+        }
+        tokenCache.put(true, new Lexer.Token<>(Lexer.TokenType.BOOLEAN, true));
+        tokenCache.put(false, new Lexer.Token<>(Lexer.TokenType.BOOLEAN, false));
+        for (ParenthesisTokenHandler.ParenthesisType value : ParenthesisTokenHandler.ParenthesisType.values()) {
+            tokenCache.put(value, new Lexer.Token<>(Lexer.TokenType.PARENTHESIS, value));
+        }
+    }
 
     public TokenManager() {
         tokenHandlers.put(Lexer.TokenType.FLOAT, new FloatTokenHandler());
@@ -26,6 +44,26 @@ public class TokenManager {
         tokenHandlers.put(Lexer.TokenType.KEYWORD, new KeywordTokenHandler());
     }
 
+    public Lexer.Token<?> handleToken(String source, AtomicInteger index) {
+        for (TokenManager.TokenHandler handler : Interpreter.tokenManager.tokenHandlers.values()) {
+            if (handler.canHandle(source, index)) {
+                return handler.parse(source, index);
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T> Lexer.Token<T> newOrCached(Lexer.TokenType type, Object key, T value) {
+        if (tokenCache.containsKey(key)) {
+            return (Lexer.Token<T>) tokenCache.get(key);
+        } else {
+            Lexer.Token<T> token = new Lexer.Token<>(type, value);
+            tokenCache.put(key, token);
+            return token;
+        }
+    }
+
     public interface TokenHandler {
         Lexer.Token<?> parse(String source, AtomicInteger index);
         boolean canHandle(String source, AtomicInteger index);
@@ -39,6 +77,7 @@ public class TokenManager {
             return string.toString();
         }
     }
+
     public static class SingleTokenHandler implements TokenHandler {
         final char token;
         final Lexer.TokenType type;
@@ -52,7 +91,7 @@ public class TokenManager {
         public Lexer.Token<Character> parse(String source, AtomicInteger index) {
             Character srcToken = source.charAt(index.get());
             index.getAndIncrement();
-            return new Lexer.Token<>(type, srcToken);
+            return newOrCached(type, srcToken, srcToken);
         }
 
         @Override
@@ -64,8 +103,16 @@ public class TokenManager {
     public static class KeywordTokenHandler implements TokenHandler {
         @Override
         public Lexer.Token<String> parse(String source, AtomicInteger index) {
-            String keyword = getString(source, index, this::canHandle);
-            return new Lexer.Token<>(Lexer.TokenType.KEYWORD, keyword);
+            for (String keyword : Interpreter.keywordManager.keywordHandlers.keySet()) {
+                if (index.get() + keyword.length() <= source.length()) {
+                    String subSequence = source.substring(index.get(), index.get() + keyword.length());
+                    if (subSequence.equals(keyword)) {
+                        index.getAndAdd(subSequence.length());
+                        return newOrCached(Lexer.TokenType.KEYWORD, keyword, keyword);
+                    }
+                }
+            }
+            return null;
         }
 
         @Override
@@ -82,7 +129,6 @@ public class TokenManager {
         }
     }
 
-
     public static class BooleanTokenHandler implements TokenHandler {
         @Override
         public Lexer.Token<Boolean> parse(String source, AtomicInteger index) {
@@ -94,7 +140,7 @@ public class TokenManager {
                 index.addAndGet(5);
             }
 
-            return new Lexer.Token<>(Lexer.TokenType.BOOLEAN, bool);
+            return newOrCached(Lexer.TokenType.BOOLEAN, bool, bool);
         }
 
         @Override
@@ -142,8 +188,9 @@ public class TokenManager {
     }
 
     public static class OperatorTokenHandler implements TokenHandler {
+        @Override
         public Lexer.Token<String> parse(String source, AtomicInteger index) {
-            return new Lexer.Token<>(Lexer.TokenType.OPERATOR, getString(source, index, this::canHandle));
+            return newOrCached(Lexer.TokenType.OPERATOR, getString(source, index, this::canHandle), getString(source, index, this::canHandle));
         }
 
         @Override

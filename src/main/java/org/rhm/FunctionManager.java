@@ -18,7 +18,7 @@ public class FunctionManager {
                 throw new IllegalArgumentException("println requires at least one argument.");
             }
 
-            String formatString = args[0].getAs(String.class);
+            String formatString = args[0].toString();
 
             Object[] formatArgs = new Object[args.length - 1];
             for (int i = 1; i < args.length; i++) {

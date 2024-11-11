@@ -1,7 +1,6 @@
 package org.rhm;
 
 import org.rhm.tokens.ParenthesisTokenHandler;
-import org.rhm.tokens.TokenManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +12,14 @@ public class Parser {
     private List<Lexer.Token<?>> tokens;
     public Interpreter interpreter;
     private int index = 0;
+
+    public int getIndex() {
+        return index;
+    }
+
+    public void setIndex(int index) {
+        this.index = index;
+    }
 
     public Parser(List<Lexer.Token<?>> tokens) {
         this.tokens = tokens;
@@ -49,6 +56,13 @@ public class Parser {
         }
     }
 
+    public void retreat() {
+        if (index > 0) {
+            index--;
+            logger.debug("retreat: New index is {}", index);
+        }
+    }
+
     public Object parseExpression() {
         logger.debug("Parsing expression starting at token index {}", index);
         Object leftOperand = parsePrimary();
@@ -59,7 +73,7 @@ public class Parser {
                 if (operator.equals(entry.getKey())) {
                     logger.debug("Found operator: {}. Parsing with handler.", operator);
                     advance();
-                    leftOperand = entry.getValue().parse(leftOperand, parsePrimary());
+                    leftOperand = entry.getValue().parse(leftOperand, parseExpression());
                 } else {
                     break;
                 }
@@ -73,7 +87,52 @@ public class Parser {
 
     public Object parsePrimary() {
         logger.debug("Parsing primary expression at index {}", index);
-        if (getCurrentToken().type == Lexer.TokenType.IDENTIFIER) {
+        if (ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.SQUARE_LEFT)) {
+            List<SafeObject> elements = new ArrayList<>();
+            Class<?> elementType = null;
+            advance();
+
+            while (hasMoreTokens() && !ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.SQUARE_RIGHT)) {
+                Object element = parseExpression();
+
+                if (elementType == null) {
+                    elementType = element.getClass();
+                } else if (!elementType.equals(element.getClass())) {
+                    throw new IllegalArgumentException("List elements must all be of the same type.");
+                }
+
+                elements.add(new SafeObject(element));
+
+                if (getCurrentToken().type == Lexer.TokenType.COMMA) {
+                    advance();
+                } else if (!ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.SQUARE_RIGHT)) {
+                    throw new IllegalArgumentException("Expected comma or closing bracket in list.");
+                }
+            }
+
+            if (!ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.SQUARE_RIGHT)) {
+                throw new IllegalArgumentException("Expected closing bracket for list.");
+            }
+            advance();
+
+            logger.debug("Parsed list with elements: {}", elements);
+            return elements;
+        } else if (ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.ROUND_LEFT)) {
+             logger.debug("Parsing grouped expression.");
+             advance();
+             Object result = parseExpression();
+             if (ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.ROUND_RIGHT)) {
+                 advance();
+             } else {
+                 logger.error("Expected closing parenthesis at index {}", index);
+                 throw new IllegalArgumentException("Expected closing parenthesis on index " + index + ".");
+             }
+             return result;
+         } else if (getCurrentToken().type == Lexer.TokenType.KEYWORD) {
+             Object value = Interpreter.keywordManager.keywordHandlers.get(getCurrentToken().getAs(String.class)).execute(this);
+             advance();
+             return value;
+         } else if (getCurrentToken().type == Lexer.TokenType.IDENTIFIER) {
             String identifier = getCurrentToken().getAs(String.class);
             advance();
 
@@ -81,28 +140,15 @@ public class Parser {
                 logger.debug("Assignment found for identifier: {}", identifier);
                 advance();
                 Object value = parseExpression();
+                interpreter.setVariableValue(identifier, value);
                 return new Assignment(identifier, value);
             }
-            if (Interpreter.functionManager.functionHandlers.containsKey(identifier) && getCurrentToken().type == Lexer.TokenType.PARENTHESIS) {
+            if (Interpreter.functionManager.functionHandlers.containsKey(identifier) && ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.ROUND_LEFT)) {
                 logger.debug("Function call found for identifier: {}", identifier);
                 return Interpreter.functionManager.functionHandlers.get(identifier).execute(parseFunctionArguments());
             }
 
             return interpreter.getVariableValue(identifier);
-        } else if (ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.ROUND_LEFT)) {
-            logger.debug("Parsing grouped expression.");
-            advance();
-            Object result = parseExpression();
-            if (ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.ROUND_RIGHT)) {
-                advance();
-            } else {
-                logger.error("Expected closing parenthesis at index {}", index);
-                throw new IllegalArgumentException("Expected closing parenthesis on index " + index + ".");
-            }
-            return result;
-        } else if (getCurrentToken().type == Lexer.TokenType.EOF) {
-            System.exit(0);
-            return null;
         }
         Object value = getCurrentToken().getAs(Object.class);
         advance();
@@ -112,11 +158,23 @@ public class Parser {
 
     private SafeObject[] parseFunctionArguments() {
         logger.debug("Parsing function arguments.");
-        advance();  // Advance to the first token after '('
+        advance();
         List<SafeObject> args = new ArrayList<>();
+        int parenCount = 0;
+        boolean initial = true;
 
-        while (getCurrentToken().type != Lexer.TokenType.PARENTHESIS) {
-            if (getCurrentToken().type == Lexer.TokenType.COMMA) {
+        while (initial || (parenCount > 0 && hasMoreTokens())) {
+            initial = false;
+            if (getCurrentToken().type == Lexer.TokenType.PARENTHESIS) {
+                if (getCurrentToken().getAs(ParenthesisTokenHandler.ParenthesisType.class) == ParenthesisTokenHandler.ParenthesisType.ROUND_LEFT) {
+                    parenCount++;
+                } else if (getCurrentToken().getAs(ParenthesisTokenHandler.ParenthesisType.class) == ParenthesisTokenHandler.ParenthesisType.ROUND_RIGHT) {
+                    parenCount--;
+                } else {
+                    logger.error("Unexpected parenthesis type at index {}: {}", index, getCurrentToken().getAs(ParenthesisTokenHandler.ParenthesisType.class));
+                    throw new IllegalArgumentException("Unexpected parenthesis at index " + index);
+                }
+            } else if (getCurrentToken().type == Lexer.TokenType.COMMA && parenCount == 1) {
                 advance();
                 continue;
             }
@@ -124,15 +182,17 @@ public class Parser {
             args.add(new SafeObject(parseExpression()));
         }
 
-        if (ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.ROUND_RIGHT)) {
+        if (parenCount == 0) {
             advance();
         } else {
             logger.error("Expected closing parenthesis for function arguments.");
             throw new IllegalArgumentException("Expected closing parenthesis.");
         }
 
+        logger.debug("Finished parsing function arguments: {}.", args);
         return args.toArray(new SafeObject[0]);
     }
+
 
     public record Assignment(String variableName, Object value) { }
 }
