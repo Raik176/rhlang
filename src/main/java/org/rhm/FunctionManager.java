@@ -3,7 +3,9 @@ package org.rhm;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class FunctionManager {
@@ -79,6 +81,20 @@ public class FunctionManager {
             float result = Math.min(args[0].getAs(Number.class).floatValue(), args[1].getAs(Number.class).floatValue());
             logger.debug("Executing 'min' with arguments: {} and {}. Result: {}", args[0], args[1], result); // Changed to debug
             return result;
+        });
+
+        functionHandlers.put("len", args -> {
+            if (args.length != 1) {
+                logger.error("Invalid number of arguments for 'len'. Expected 1 but got {}", args.length);
+                throw new IllegalArgumentException("len requires exactly one argument.");
+            }
+            List<?> list = args[0].getAs(List.class);
+            if (list != null) {
+                return list.size();
+            } else {
+                logger.error("Expected a list for 'len' function, but found {}", args[0].getValueClass().getName());
+                throw new IllegalArgumentException("Expected a list for 'len' function.");
+            }
         });
     }
 

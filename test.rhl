@@ -1,4 +1,5 @@
 a = ["a","b","c","d"]
+println(len(a))
 for (elem in a) {
   println(elem)
 }

@@ -18,28 +18,32 @@ public class ForKeywordHandler extends KeywordManager.KeywordHandler {
     public Object execute(Parser parser) {
         parser.advance();
         if (!ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(parser.getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.ROUND_LEFT)) {
-            logger.error("Expected opening round parenthesis for condition, but found {}", parser.getCurrentToken());
-            throw new IllegalArgumentException("Expected opening round parenthesis for condition.");
+            logger.error("Expected opening round parenthesis for 'for' loop, but found {}", parser.getCurrentToken());
+            throw new IllegalArgumentException("Expected opening round parenthesis for 'for' loop.");
         }
         parser.advance();
+
         if (parser.getCurrentToken().type != Lexer.TokenType.IDENTIFIER) {
-            // error
-            return null;
+            logger.error("Expected identifier for loop variable, but found {}", parser.getCurrentToken());
+            throw new IllegalArgumentException("Expected identifier for loop variable.");
         }
+
         String varName = parser.getCurrentToken().getAs(String.class);
         parser.advance();
+
         if (parser.getCurrentToken().type != Lexer.TokenType.IDENTIFIER || !Objects.equals(parser.getCurrentToken().getAs(String.class), "in")) {
-            // error
-            return null;
+            logger.error("Expected 'in' keyword, but found {}", parser.getCurrentToken());
+            throw new IllegalArgumentException("Expected 'in' keyword in 'for' loop.");
         }
         parser.advance();
 
         Object object = parser.parseExpression();
         if (!ParenthesisTokenHandler.ParenthesisType.isParenthesisOfType(parser.getCurrentToken(), ParenthesisTokenHandler.ParenthesisType.ROUND_RIGHT)) {
-            logger.error("Expected closing round parenthesis for condition, but found {}", parser.getCurrentToken());
-            throw new IllegalArgumentException("Expected closing round parenthesis for condition.");
+            logger.error("Expected closing round parenthesis for 'for' loop, but found {}", parser.getCurrentToken());
+            throw new IllegalArgumentException("Expected closing round parenthesis for 'for' loop.");
         }
         parser.advance();
+
         int index = parser.getIndex();
 
         if (object instanceof List<?> elements) {
@@ -49,9 +53,12 @@ public class ForKeywordHandler extends KeywordManager.KeywordHandler {
                 parseForBlock(parser);
                 parser.setIndex(index);
             }
+        } else {
+            logger.error("Expected a list for 'for' loop, but found {}", object.getClass().getName());
+            throw new IllegalArgumentException("Expected a list for 'for' loop.");
         }
-        skipForBlock(parser);
 
+        skipForBlock(parser);
         return null;
     }
 

@@ -1,2 +1,3 @@
 rootProject.name = 'RHLang'
 
+include 'lsp'

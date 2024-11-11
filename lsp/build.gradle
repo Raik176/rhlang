@@ -1,0 +1,18 @@
+repositories {
+    maven { url 'https://repo.maven.apache.org/maven2/' }
+}
+
+dependencies {
+    implementation project(":")
+
+    implementation 'org.eclipse.lsp4j:org.eclipse.lsp4j:0.23.1'
+    implementation 'org.eclipse.lsp4j:org.eclipse.lsp4j.jsonrpc:0.23.1'
+}
+
+jar {
+    from project(':').sourceSets.main.output
+}
+
+test {
+    useJUnitPlatform()
+}

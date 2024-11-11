@@ -22,7 +22,7 @@ public class SafeObject {
     }
 
     public Class<?> getValueClass() {
-        return value.getClass();
+        return isNull() ? null : value.getClass();
     }
 
     public boolean isNull() {
